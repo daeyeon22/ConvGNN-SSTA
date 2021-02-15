@@ -1,3 +1,6 @@
 data/*
 *.dat
-
+*.swp
+src/__pycache__/*
+src/runs/*
+save/*

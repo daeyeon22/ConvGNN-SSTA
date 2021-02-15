@@ -166,7 +166,9 @@ class ReadoutFunction(nn.Module):
         # modified by dykim 
         nn_res = nn.Sigmoid()(self.learn_modules[0](torch.cat([h[0], h[-1]], 1)))*self.learn_modules[1](h[-1])
         nn_res = (torch.unsqueeze(torch.sum(h[0],1),1).expand_as(nn_res)>0).type_as(nn_res)* nn_res
+
         aux = torch.sum(nn_res,0)
+        #print(aux.shape)
         '''
         for i in range(h[0].size(0)):
             nn_res = nn.Sigmoid()(self.learn_modules[0](torch.cat([h[0][i,:,:], h[-1][i,:,:]], 1)))*self.learn_modules[1](h[-1][i,:,:])

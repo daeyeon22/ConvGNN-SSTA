@@ -5,7 +5,7 @@ import torch
 import os
 from enum import Enum, auto
 from torch_geometric.data import Data
-
+import shutil
 
 
 
@@ -124,8 +124,7 @@ def parse_dat(fname):
 
     x = x * x_coef
 
-    print('x: ', x[1])
-
+    #print('x: ', x[1])
     #
     net_features = np.zeros((N, EDGE_FEATURE_DIM))
     for i in range(N-1):
@@ -137,14 +136,14 @@ def parse_dat(fname):
         edge_attr[i] = net_features[n1]
     edge_attr = edge_attr * edge_attr_coef
 
-    print('edge_attr: ', edge_attr[0])
+    #print('edge_attr: ', edge_attr[0])
 
     target = np.zeros(TARGET_DIM)
     for i, val in zip(range(TARGET_DIM), f.readline().strip().split()):
         target[i] = 1e+12 * float(val)
     #target = [ 1e+12 * float(val) for val in f.readline().strip().split()]
    
-    print('target: ', target)
+    #print('target: ', target)
 
     f.close()
 
@@ -155,6 +154,15 @@ def parse_dat(fname):
     #edge_attr = torch.FloatTensor(edge_attr)
 
     return (x, edge_index, edge_attr, target)
+
+def save_checkpoint(state, is_best, directory):
+    if not os.path.isdir(directory):
+        os.makedirs(directory)
+    checkpoint_file = os.path.join(directory, 'checkpoint.pth')
+    best_model_file = os.path.join(directory, 'model_best.pth')
+    torch.save(state, checkpoint_file)
+    if is_best:
+        shutil.copyfile(checkpoint_file, best_model_file)
 
 
 

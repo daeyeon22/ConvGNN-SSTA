@@ -2,11 +2,13 @@ import torch
 import torch.nn as nn
 import os
 import numpy as np
-from utils import parse_dat
+from utils import parse_dat, save_checkpoint
 from torch_geometric.nn import NNConv
 from ReadoutFunction import ReadoutFunction
 from LogMetric import AverageMeter
 from torch.autograd.variable import Variable
+from torch.utils.tensorboard import SummaryWriter
+
 
 NODE_FEATURE_SIZE = 31
 HIDDEN_STATE_SIZE = 95
@@ -17,6 +19,9 @@ DROPOUT = 0.1
 N_LAYERS = 3
 LAYERS = [128, 128, 128]
 N_UPDATE = 3
+NUM_EPOCHS = 100
+
+
 CUDA = True
 
 class ConvGNN(nn.Module):
@@ -149,7 +154,8 @@ def custum_evaluation(output, target):
     return torch.mean(torch.abs(output-target)/torch.abs(target))
 
 def main():
-    data_home = "/home/dykim/ConvGNN/data/training_data_test"
+    data_home = "../data/training_data_test"
+    save_home = "../save"
     data_files = []
     for (dirpath, dirname, filename) in os.walk(data_home):
         data_files +=  [ os.path.join(dirpath, file) for file in filename ]
@@ -164,6 +170,8 @@ def main():
     criterion = custum_loss
     evaluation = custum_evaluation 
 
+    writer = SummaryWriter()
+
     args = {\
         'message_layers': LAYERS,\
         'readout_layers': LAYERS,\
@@ -172,21 +180,43 @@ def main():
         'edge_feature_size': EDGE_FEATURE_SIZE,\
         'target_size': TARGET_SIZE,\
         'dropout': DROPOUT,\
-        'n_update': N_UPDATE\
+        'n_update': N_UPDATE,\
+        'num_epoch': NUM_EPOCHS
     }
 
     model = ConvGNN(args)
+
+    learning_rate = 1e-03
+
+    optimizer = torch.optim.SGD(model.parameters(), learning_rate)
+
+    best_er1 = 100
+
+
+    for epoch in range(args['num_epoch']):
+        # train
+        train_loss, train_err = train(data_train, model, epoch, criterion, evaluation, optimizer)
+        # validation
+        valid_loss, valid_err = validate(data_valid, model, criterion, evaluation)
+   
+        print('[Train] Average Error Ratio {err:.3e}; Average Loss {loss:.3e}'.format(err=train_err, loss=train_loss))
+        print('[Valid] Average Error Ratio {err:.3e}; Average Loss {loss:.3e}'.format(err=valid_err, loss=valid_loss))
+
+        is_best = valid_err < best_er1
+
+        best_er1 = min(valid_err, best_er1)
     
-    train(data_train, model, 0, criterion, evaluation)
+        save_checkpoint({'epoch': epoch+1, 'state_dict': model.state_dict(), 'best_er1': best_er1, 'optimizer':optimizer.state_dict(), }, \
+                is_best=is_best, directory=save_home)
 
-    # train
 
-def train(data_train, model, epoch, criterion, evaluation, _optimizer = 'SGD'):
+
+def train(data_train, model, epoch, criterion, evaluation, optimizer):
     losses = AverageMeter()
     error_ratio = AverageMeter()
     
     #optimizer = torch.optim.SGD(model.parameters(), 1e-04)
-    optimizer = torch.optim.Adam(model.parameters(), 1e-04)
+    #optimizer = torch.optim.Adam(model.parameters(), 1e-03)
 
     # for debug
     #for param in model.parameters():
@@ -197,20 +227,47 @@ def train(data_train, model, epoch, criterion, evaluation, _optimizer = 'SGD'):
     for i, (x, edge_index, edge_attr, target) in enumerate(map(parse_dat, data_train)):
         output = model(x, edge_index, edge_attr)
         train_loss = criterion(output, target)
-   
+        train_error = evaluation(output, target)
+
         #print(train_loss.item())
-        losses.update(train_loss.item())
-        error_ratio.update(evaluation(output, target).item())
+        losses.update(train_loss.item(), 1)
+        error_ratio.update(train_error.item(), 1) #evaluation(output, target).item())
 
         train_loss.backward()
         optimizer.step()
 
-
+        '''
         if i % 100 == 0 and i > 0:
             print('Epoch: [{0}][{1}/{2}]\t'
                   'Loss {loss.val:.4e} ({loss.avg:.4e})\t'
                   'Error Ratio {err.val:.4e} ({err.avg:.4e})'
                   .format(epoch, i, len(data_train), loss=losses, err=error_ratio))
+        '''
+    return losses.avg, error_ratio.avg
+
+
+def validate(data_valid, model, criterion, evaluation, logger=None):
+    losses = AverageMeter()
+    error_ratio = AverageMeter()
+
+    model.eval()
+    
+    for i, (x, edge_index, edge_attr, target) in enumerate(map(parse_dat, data_valid)):
+        output = model(x, edge_index, edge_attr)
+
+        valid_loss = criterion(output, target)
+        valid_error = evaluation(output, target)
+
+        losses.update(valid_loss.item(), 1)
+        error_ratio.update(valid_error.item(), 1)
+
+
+    return losses.avg, error_ratio.avg
+
+
+
+
+
 
 
 if __name__ == '__main__':
