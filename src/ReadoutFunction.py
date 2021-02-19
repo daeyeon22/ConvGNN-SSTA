@@ -43,6 +43,7 @@ class ReadoutFunction(nn.Module):
         #self.args['dev1']=args['dev1']
         self.args['dropout']=args['dropout']
         self.args['layers']=args['layers']
+        self.args['device']=args['device']
         self.__set_readout(readout_def, args)
 
     # Readout graph given node values at las layer
@@ -186,11 +187,11 @@ class ReadoutFunction(nn.Module):
         args = {}
         # i
         learn_modules.append(NNet(n_in=2*params['in'], n_out=params['target'],\
-                dropout = params['dropout'], hlayers = params['layers']))
+                dropout = params['dropout'], hlayers = params['layers'], device=self.args['device']))
 
         # j
         learn_modules.append(NNet(n_in=params['in'], n_out=params['target'],\
-                dropout = params['dropout'], hlayers = params['layers']))
+                dropout = params['dropout'], hlayers = params['layers'], device=self.args['device']))
 
         '''
         # i
@@ -206,25 +207,27 @@ class ReadoutFunction(nn.Module):
         return nn.ParameterList(learn_args), nn.ModuleList(learn_modules), args
 
 class NNet(nn.Module):
-    def __init__(self, n_in, n_out, dropout=0.1, hlayers=(128, 256, 128)):
+    def __init__(self, n_in, n_out, dropout=0.1, hlayers=(128, 256, 128), device=torch.device('cuda')):
         super(NNet, self).__init__()
         if hlayers is None: hlayers=(128, 256, 128)
+        self.device = device
         self.n_hlayers = len(hlayers)
         self.dropout = dropout
-        self.fcs = nn.ModuleList([nn.Linear(n_in, hlayers[i]) if i == 0 else
-                                  nn.Linear(hlayers[i-1], n_out) if i == self.n_hlayers else
-                                  nn.Linear(hlayers[i-1], hlayers[i]) for i in range(self.n_hlayers+1)])
+        self.fcs = nn.ModuleList([nn.Linear(n_in, hlayers[i]).to(device) if i == 0 else
+                                  nn.Linear(hlayers[i-1], n_out).to(device) if i == self.n_hlayers else
+                                  nn.Linear(hlayers[i-1], hlayers[i]).to(device) for i in range(self.n_hlayers+1)])
         
     def forward(self, x):
         x = x.contiguous().view(-1, self.num_flat_features(x))
         #x = x.view(-1, self.num_flat_features(x))
         for i in range(self.n_hlayers):
-            #if i == 0:  x = x.to(self.dev0)
-            #else:       x = x.to(self.dev1)
+            x = x.to(self.device)
             x = F.relu(self.fcs[i](x))
             x = F.dropout(x, p = self.dropout, training=self.training)
         #x = x.to(self.dev1)
+        x = x.to(self.device)
         x = self.fcs[-1](x)
+        x = x.to(self.device)
         #x = x.to(self.dev1)
         return x
 

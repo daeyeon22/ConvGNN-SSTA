@@ -139,7 +139,7 @@ def parse_dat(fname):
     #print('edge_attr: ', edge_attr[0])
 
     target = np.zeros(TARGET_DIM)
-    for i, val in zip(range(TARGET_DIM), f.readline().strip().split()):
+    for i, val in zip(range(TARGET_DIM), f.readline().strip().split()[1:]):
         target[i] = 1e+12 * float(val)
     #target = [ 1e+12 * float(val) for val in f.readline().strip().split()]
    
