@@ -90,6 +90,7 @@ def parse_dat(fname):
     edge_attr = []
 
     N = int(f.readline().split()[0]) + 2
+    
 
     for i in range(N):
         for j, weight in enumerate(map(int, f.readline().strip().split('\t'))):
