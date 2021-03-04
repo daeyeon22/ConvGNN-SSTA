@@ -44,7 +44,46 @@ def get_argument():
     parser.add_argument('--batch', default=20, type=int)    
     parser.add_argument('--verbose', default=False, type=bool)
     parser.add_argument('--save', default='../save', type=str)
-    args = parser.parse_args()
+    iargs = parser.parse_args()
+
+    device = get_device(iargs)
+    verbose = iargs.verbose #True
+    args = {\
+        'message_layers': iargs.layers,\
+        'readout_layers': iargs.layers,\
+        'node_feature_size': NODE_FEATURE_SIZE,\
+        'hidden_state_size': iargs.hidden_state_size,\
+        'edge_feature_size': EDGE_FEATURE_SIZE,\
+        'target_size': TARGET_SIZE,\
+        'dropout': iargs.dropout,\
+        'n_update': iargs.n_update,\
+        'num_epoch': iargs.n_epochs,\
+        'lr': iargs.lr,\
+        'batch': iargs.batch,\
+        'opt': iargs.opt,\
+        'device': device, \
+        'verbose': iargs.verbose
+    }
+
+    # model's description
+    model_name = "{layer:}_{hidden_state_size:}_{n_update:}_{dropout:}_{num_epoch:}_{batch_size:}_{lr:}_{opt:}".format(\
+            layer='-'.join([str(val) for val in args['message_layers']]),\
+            hidden_state_size=args['hidden_state_size'],\
+            n_update=args['n_update'],\
+            dropout=args['dropout'],\
+            num_epoch=args['num_epoch'],\
+            batch_size=args['batch'],\
+            lr=args['lr'],\
+            opt=args['opt']
+            )
+
+    # checkpoint save directory
+    save_home = "%s/%s" % (iargs.save, model_name)
+    args['model_name'] = model_name
+    args['save_home'] = save_home
+    args['criterion'] = custum_loss
+    args['evaluation'] = custum_evaluation
+
     return args
 
 def get_optimizer(param, opt_type, lr):
@@ -130,7 +169,192 @@ def get_datasets():
 
     return (train_dataset, valid_dataset, test_dataset)
 
+def get_model(args):
+    model = ConvGNN(args)
+    num_epoch = args['num_epoch']
+    save_home = args['save_home']
+    model_name = args['model_name']
+    checkpoint_file = os.path.join(save_home, "model_best.pth")
+    training = True
+    cp_epoch = 0
+    cp_train_loss = 0
+    cp_valid_loss = 0
 
+
+    if not os.path.isdir(save_home):
+        os.makedirs(save_home)
+
+    if os.path.isfile(checkpoint_file):
+        print("=> loading checkpoint '{}'".format(checkpoint_file))
+        checkpoint = torch.load(checkpoint_file)
+        model.load_state_dict(checkpoint['state_dict'])
+        training = False
+        cp_train_loss = checkpoint['train_loss']
+        cp_valid_loss = checkpoint['epoch']
+        cp_epoch = checkpoint['valid_loss']
+
+    return model, training, cp_epoch, cp_train_loss, cp_valid_loss
+
+
+
+def main():
+    args = get_argument()
+    train_dataset, valid_dataset, test_dataset = get_datasets()
+
+    model_name = args['model_name']
+    save_home = args['save_home']
+    
+    model, training, best_ep, best_train_loss, best_valid_loss = get_model(args)
+
+    print("Model's state_dict:")
+    for param_tensor in model.state_dict():
+        print(param_tensor, "\t", model.state_dict()[param_tensor].size())
+
+    if training:
+        train(model, args, train_dataset, valid_dataset)
+        print("Load best model")
+        #model, _ = get_model(args)
+        model, _, best_ep, best_train_loss, best_valid_loss = get_model(args)
+    
+
+
+    test_loss = test(model,args, test_dataset)
+
+    summary_file = open('%s/summary.txt' % save_home, 'w')
+    summary_file.write('%s epoch %d train_loss %.3f valid_loss %.3f test_loss %.3f\n' % (model_name, best_ep, best_train_loss, best_valid_loss, test_loss))
+    summary_file.close()
+
+
+    #test(model, args, test_dataset)
+    #test(model, args, train_dataset)
+    #test(model, args, valid_dataset)
+
+
+def test(model, args, test_dataset):
+
+    print("=> start testing")
+    batch_size = args['batch']
+    verbose = args['verbose']
+    device = args['device']
+    save_home = args['save_home']
+    model_name = args['model_name']
+    criterion = args['criterion']
+
+    test_loader = torch_geometric.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
+    #validation
+
+    test_losses = AverageMeter()
+
+    model.eval()
+    for i, data in enumerate(test_loader):
+        output = model(x=data.x, edge_index=data.edge_index, edge_attr=data.edge_attr, batch=data.batch)
+        
+        test_loss = criterion(output, data.y, device)
+        test_losses.update(test_loss.item(), data.num_graphs)
+        #error_ratio.update(valid_error.item(), data.num_graphs)
+        
+        print('[{step:2d}/{tot_step:2d}] Loss {t_loss:.3f}'
+            .format(step=i, tot_step=len(test_loader), t_loss=test_loss))
+
+
+    return test_losses.avg
+
+
+def train(model, args, train_dataset, valid_dataset):
+
+    print("=> start training")
+    writer = SummaryWriter()
+    
+    verbose = args['verbose']
+    device = args['device']
+    batch_size = args['batch']
+    learning_rate = args['lr'] #1e-04
+    opt_type = args['opt']
+    num_epoch = args['num_epoch']
+    save_home = args['save_home']
+    model_name = args['model_name']
+    criterion = args['criterion']
+    optimizer = get_optimizer(model.parameters(), opt_type, learning_rate) 
+    optimizer.zero_grad()
+
+
+    best_er1 = 100
+    best_ep = 0
+    best_loss = math.inf
+    best_train_loss, best_valid_loss = 0, 0
+    best_param = {}
+    
+    log_file = open('%s/log.txt' % save_home, 'w')
+    log_file.write("%s\n" % model_name)
+
+    train_loader = torch_geometric.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    valid_loader = torch_geometric.data.DataLoader(valid_dataset, batch_size=batch_size, shuffle=True)
+
+    for epoch in range(num_epoch):
+        train_losses = AverageMeter()
+        valid_losses = AverageMeter()
+        
+        
+        # train
+        model.train()
+        for i, data in enumerate(train_loader):
+            output = model(x=data.x, edge_index=data.edge_index, edge_attr=data.edge_attr, batch=data.batch)
+            train_loss = criterion(output, data.y, device)
+            train_losses.update(train_loss.item(), data.num_graphs)
+            #error_ratio.update(train_error.item(), data.num_graphs) #evaluation(output, target).item())
+
+            train_loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()    
+
+        #validation
+        model.eval()
+        for i, data in enumerate(valid_loader):
+            output = model(x=data.x, edge_index=data.edge_index, edge_attr=data.edge_attr, batch=data.batch)
+            
+            valid_loss = criterion(output, data.y, device)
+            valid_losses.update(valid_loss.item(), data.num_graphs)
+            #error_ratio.update(valid_error.item(), data.num_graphs)
+
+        train_loss = train_losses.avg
+        valid_loss = valid_losses.avg
+
+        if verbose:
+            print('[{epoch:2d}/{tot_epoch:2d}] Train Average Loss {t_loss:.3f} Valid Average Loss {v_loss:.3f}'
+                .format(epoch=epoch, tot_epoch=num_epoch, t_loss=train_loss, v_loss=valid_loss))
+
+        log_file.write('[{epoch:2d}/{tot_epoch:2d}] Train Average Loss {t_loss:.3f} Valid Average Loss {v_loss:.3f}\n'
+                .format(epoch=epoch, tot_epoch=num_epoch, t_loss=train_loss, v_loss=valid_loss))
+
+        #is_best = valid_err < best_er1
+        is_best = valid_loss < best_loss and not math.isnan(valid_loss)
+        if is_best:
+            best_loss = min(valid_loss, best_loss) 
+            best_ep = epoch
+            best_train_loss = train_loss
+            best_valid_loss = best_loss
+            save_checkpoint({'epoch': epoch+1, 'state_dict': model.state_dict(), 'optimizer':optimizer.state_dict(), 'train_loss': best_train_loss,
+                    'valid_loss': best_valid_loss, }, \
+                    is_best=is_best, directory=save_home)
+
+    if verbose:
+        print("(Best) epoch=%d loss=%.3f" % (best_ep, best_loss))
+
+    log_file.write("Best loss : %s\n" % best_loss)
+    log_file.close()
+    
+    #return best_ep, best_train_loss, best_valid_loss
+
+    
+
+
+if __name__ == '__main__':
+    main()
+
+
+
+
+'''
 def main():
 
     train_dataset, valid_dataset, test_dataset = get_datasets()
@@ -240,23 +464,18 @@ def train(train_loader, model, epoch, criterion, evaluation, optimizer, device, 
         output = model(x=data.x, edge_index=data.edge_index, edge_attr=data.edge_attr, batch=data.batch)
         train_loss = criterion(output, data.y, device)
         train_error = evaluation(output, data.y, device)
-
-        #if i % 100 == 0 and verbose:
-        #    print(output, data.y)
         
-        losses.update(train_loss.item(), 1)
-        error_ratio.update(train_error.item(), 1) #evaluation(output, target).item())
+        losses.update(train_loss.item(), data.num_graphs)
+        error_ratio.update(train_error.item(), data.num_graphs) #evaluation(output, target).item())
 
         train_loss.backward()
         optimizer.step()
 
-        '''
         if i % 100 == 0 and i > 0:
             print('Epoch: [{0}][{1}/{2}]\t'
                   'Loss {loss.val:.4e} ({loss.avg:.4e})\t'
                   'Error Ratio {err.val:.4e} ({err.avg:.4e})'
                   .format(epoch, i, len(data_train), loss=losses, err=error_ratio))
-        '''
     return losses.avg, error_ratio.avg
 
 
@@ -272,12 +491,8 @@ def validate(valid_loader, model, criterion, evaluation, device):
         valid_loss = criterion(output, data.y, device)
         valid_error = evaluation(output, data.y, device)
 
-        losses.update(valid_loss.item(), 1)
-        error_ratio.update(valid_error.item(), 1)
+        losses.update(valid_loss.item(), data.num_graphs)
+        error_ratio.update(valid_error.item(), data.num_graphs)
 
     return losses.avg, error_ratio.avg
-
-
-
-if __name__ == '__main__':
-    main()
+'''

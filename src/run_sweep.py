@@ -35,12 +35,12 @@ def run_sweep():
     device_count = torch.cuda.device_count()
     dropout_list = [ 0.1 ]
     hidden_state_size_list = [ 95, 105, 115, 125 ] 
-    optimizer_list = [ 'SGD', 'Adam', 'Adadelta', 'RMSprop' ]
+    optimizer_list = [ 'Adadelta', 'RMSprop' ]
     batch_list = [ 10, 20, 30, 40, 50 ]
     n_update_list = [ 1, 2, 3, 4, 5 ]
     n_epoch_list = [ 500 ]
-    layer_list = [ '128 128 128', '128 256 512', '256 256 512' ]
-    lr_list = [ 0.01, 0.001, 0.0001 ] #e-04, 5e-05, 1e-05 ]
+    layer_list = [ '128 128 128', '128 256 128' ]
+    lr_list = [ 0.01, 0.001 ] #e-04, 5e-05, 1e-05 ]
     tasks = []
      
     for (dt, hss, opt, ne, nu, la, lr, bs) in itertools.product(dropout_list, hidden_state_size_list, optimizer_list, n_epoch_list, n_update_list, layer_list,

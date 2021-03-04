@@ -91,10 +91,15 @@ class ConvGNN(nn.Module):
         device = self.args['device']
 
 
-        self.readout_func = [\
-            self.nn(hidden_state_size*2, target_size, layers, dropout).to(device), \
-            self.nn(hidden_state_size, target_size, layers, dropout).to(device) \
-        ]
+        rf1 = self.nn(hidden_state_size*2, target_size, layers, dropout).to(device)
+        rf2 = self.nn(hidden_state_size, target_size, layers, dropout).to(device) 
+        self.readout_func1 = rf1
+        self.readout_func2 = rf2
+
+        #self.readout_func = [\
+        #    self.nn(hidden_state_size*2, target_size, layers, dropout).to(device), \
+        #    self.nn(hidden_state_size, target_size, layers, dropout).to(device) \
+        #]
 
         
         #return  ReadoutFunction('mpnn', args={'in': hidden_state_size, 'target': target_size, 'dropout':dropout, 'layers':layers, 'device':device})
@@ -153,7 +158,7 @@ class ConvGNN(nn.Module):
             #h_p.append(tt.clone())            
 
         #readout
-        res = nn.Sigmoid()(self.readout_func[0](torch.cat([h[0], h[-1]], 1)))*self.readout_func[1](h[-1])
+        res = nn.Sigmoid()(self.readout_func1(torch.cat([h[0], h[-1]], 1)))*self.readout_func2(h[-1])
         res = (torch.unsqueeze(torch.sum(h[0],1),1).expand_as(res)>0).type_as(res) * res
         res = global_add_pool(res, batch)
         if self.args['type'] == 'classification':
