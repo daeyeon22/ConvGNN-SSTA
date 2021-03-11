@@ -34,10 +34,10 @@ def run_sweep():
     
     device_count = torch.cuda.device_count()
     dropout_list = [ 0.1 ]
-    hidden_state_size_list = [ 95, 105, 115, 125 ] 
+    hidden_state_size_list = [ 105, 115, 125 ] 
     optimizer_list = [ 'Adadelta', 'RMSprop' ]
-    batch_list = [ 10, 20, 30, 40, 50 ]
-    n_update_list = [ 1, 2, 3, 4, 5 ]
+    batch_list = [ 10, 30, 50 ]
+    n_update_list = [ 3, 4, 5 ]
     n_epoch_list = [ 500 ]
     layer_list = [ '128 128 128', '128 256 128' ]
     lr_list = [ 0.01, 0.001 ] #e-04, 5e-05, 1e-05 ]
@@ -57,12 +57,15 @@ def run_sweep():
 
 
     device_list = [ gpu for gpu in range(device_count) ]
+    
+    
     sliced_tasks = [tasks[::device_count+gpu] for gpu in range(device_count)]
-   
+  
     print(device_list)
     print(np.shape(sliced_tasks))
-    args = [ (gpu, sliced_tasks[gpu]) for gpu in device_list ] 
-        
+    args = [ (gpu, tasks[gpu:-gpu:device_count]) for gpu in range(device_count) ] 
+   
+
     with Pool(processes=device_count) as pool:
         try:
             pool.map(worker, args)

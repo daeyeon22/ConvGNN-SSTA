@@ -111,6 +111,8 @@ class ConvGNN(nn.Module):
         for i, num_neuron in enumerate(layers):
             out_channel = num_neuron
             module_list.append(nn.Linear(in_channel, out_channel))
+            ##
+            module_list.append(nn.BatchNorm1d(out_channel))
             module_list.append(nn.ReLU())
             module_list.append(nn.Dropout(p=dropout))
             in_channel = out_channel
@@ -133,12 +135,7 @@ class ConvGNN(nn.Module):
         edge_attr = torch.FloatTensor(edge_attr).to(device)
         batch = torch.LongTensor(batch).to(device)
 
-        
         h = []
-        #pd = torch.zeros((x.size(0), hidden_state_size - node_feature_size)).to(device)
-        #h_0 = torch.cat( (x, pd), dim=1 ).to(device) 
-        #h_0 = torch.cat([x, torch.zeros((x.size(0), hidden_state_size - node_feature_size)).to(device)], 1).to(device)
-        
         h_0 = self.state_encoder(x)
         h.append(h_0.clone())
 
@@ -146,17 +143,8 @@ class ConvGNN(nn.Module):
 
         for t in range(self.args['n_update']):
             h_t = h[t]
-
-            #print(type(h[t]), type(edge_index), type(edge_attr))
-            #print(h[t].shape, edge_index.shape, edge_attr.shape)
-            #print(h.shape)
             h_t = self.message_func(x=h_t, edge_index=edge_index, edge_attr=edge_attr)
             h.append(h_t.clone())
-            #print(h_t.shape)
-            #tt = global_mean_pool(h_t.to(device), batch)
-            #print(tt.shape)
-            #h_p.append(tt.clone())            
-
         #readout
         res = nn.Sigmoid()(self.readout_func1(torch.cat([h[0], h[-1]], 1)))*self.readout_func2(h[-1])
         res = (torch.unsqueeze(torch.sum(h[0],1),1).expand_as(res)>0).type_as(res) * res
@@ -165,11 +153,4 @@ class ConvGNN(nn.Module):
             res = nn.LogSoftmax()(res)
         return res
 
-        '''
-        res = self.readout_func(h, batch).to(device) 
-    
-        if self.args['type'] == 'classification':
-            res = nn.LogSoftmax()(res)
-        return res.squeeze(0)
-        '''
 

@@ -23,7 +23,7 @@ class Circuit(object):
             os.makedirs(self.processed_dir)
         
             for i, path in enumerate(self.raw_file_names):
-                print(path)
+                #print(path)
                 x, edge_index, edge_attr, y = self.graph_transform(path)
                 x = torch.FloatTensor(x)
                 edge_index = torch.LongTensor(edge_index).t()
@@ -31,7 +31,12 @@ class Circuit(object):
                 y = torch.FloatTensor(y)
 
                 data = torch_geometric.data.Data(x=x, edge_index=edge_index, edge_attr=edge_attr, y=y)
-                file_name = "%s_%d.%s" % (self.data_prefix, i, self.data_postfix)
+
+    
+                file_name = path.split('/')[-1]
+                print(file_name)
+
+                #file_name = "%s_%d.%s" % (self.data_prefix, i, self.data_postfix)
                 torch.save(data, os.path.join(self.processed_dir, file_name))
                 self.processed_file_names.append(file_name)
         else:
@@ -47,13 +52,13 @@ class Circuit(object):
     def get(self, idx):
         data_path = os.path.join(self.processed_dir, self.processed_file_names[idx])
         data = torch.load(data_path)
-        return data
+        return data, self.processed_file_names[idx]
 
     def __getitem__(self, idx):
         #file_name = self.processed_file_names[idx]
         data_path = os.path.join(self.processed_dir, self.processed_file_names[idx])
         data = torch.load(data_path)
-        return data
+        return data, self.processed_file_names[idx]
 
 
 

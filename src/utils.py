@@ -9,11 +9,9 @@ import shutil
 
 
 
-N_NODES_IDX = 0
-ADJ_IDX = 1
-NODE_FEATURE_DIM = 31
-EDGE_FEATURE_DIM = 19
-TARGET_DIM = 41
+NODE_FEATURE_SIZE = 31
+EDGE_FEATURE_SIZE = 17
+TARGET_SIZE = 41
 
 class GATE(Enum):
     AN2D0 = auto()
@@ -99,17 +97,17 @@ def parse_dat(fname):
             edge_index.append((i,j))
 
     # feature coefficient
-    x_coef = np.ones(NODE_FEATURE_DIM)
+    x_coef = np.ones(NODE_FEATURE_SIZE)
     x_coef[2] = 1e+4
     x_coef[3:] = 1e+12
     
 
     E = len(edge_index)
-    edge_attr = np.zeros((E, EDGE_FEATURE_DIM))
-    edge_attr_coef = np.ones(EDGE_FEATURE_DIM)
+    edge_attr = np.zeros((E, EDGE_FEATURE_SIZE))
+    edge_attr_coef = np.ones(EDGE_FEATURE_SIZE)
     edge_attr_coef[4:] = 1e+12
 
-    x = np.zeros((N, NODE_FEATURE_DIM))
+    x = np.zeros((N, NODE_FEATURE_SIZE))
     
     # node feature
     for i in range(N):
@@ -120,17 +118,18 @@ def parse_dat(fname):
         else:
             features = f.readline().strip().split()
             x[i,0] = getattr(GATE, features[0]).value
-            x[i,1:] = np.array([ float(val) for val in features[1:] ])
+            x[i,1:] = np.array([ float(val) for val in features[1:NODE_FEATURE_SIZE] ])
 
 
     x = x * x_coef
 
     #print('x: ', x[1])
     #
-    net_features = np.zeros((N, EDGE_FEATURE_DIM))
+    net_features = np.zeros((N, EDGE_FEATURE_SIZE))
     for i in range(N-1):
         features = f.readline().strip().split()
-        net_features[i] = np.array( [float(val) for val in features[1:]] )
+        #print(len(features))
+        net_features[i] = np.array( [float(val) for val in features[1:EDGE_FEATURE_SIZE+1]] )
     #net_features = net_features * edge_feature_coef
     
     for i, (n1, n2) in enumerate(edge_index):
@@ -139,8 +138,8 @@ def parse_dat(fname):
 
     #print('edge_attr: ', edge_attr[0])
 
-    target = np.zeros(TARGET_DIM)
-    for i, val in zip(range(TARGET_DIM), f.readline().strip().split()[1:]):
+    target = np.zeros(TARGET_SIZE)
+    for i, val in zip(range(TARGET_SIZE), f.readline().strip().split()[1:]):
         target[i] = 1e+12 * float(val)
     #target = [ 1e+12 * float(val) for val in f.readline().strip().split()]
    
